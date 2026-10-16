@@ -80,7 +80,7 @@ html.scrolled header.nav::before { opacity: 1; }
 
 .funnel { display: grid; gap: 8px; }
 .funnel .track { background: var(--panel); border-radius: 999px; height: 12px; overflow: hidden; }
-.funnel .fill { height: 100%; background: var(--text); border-radius: 999px; min-width: 2px; }
+.funnel .fill { height: 100%; background: var(--c, var(--text)); border-radius: 999px; min-width: 2px; }
 .funnel .n { text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
 
 
@@ -184,7 +184,7 @@ dialog.sheet::backdrop { background: rgba(0,0,0,.35); backdrop-filter: blur(2px)
 .funnel .r span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .funnel a.r { text-decoration: none; border-radius: 10px; }
 .funnel a.r:hover span:first-child { text-decoration: underline; }
-.ring { --p: 0; width: 64px; height: 64px; border-radius: 50%; background: conic-gradient(var(--text) calc(var(--p) * 1%), var(--panel2) 0); display: grid; place-items: center; flex: none; }
+.ring { --p: 0; width: 64px; height: 64px; border-radius: 50%; background: conic-gradient(var(--c, var(--text)) calc(var(--p) * 1%), var(--panel2) 0); display: grid; place-items: center; flex: none; }
 .ring > div { width: 50px; height: 50px; border-radius: 50%; background: var(--card); display: grid; place-items: center; font-size: 14px; font-weight: 600; letter-spacing: -.3px; font-variant-numeric: tabular-nums; }
 .ring.lg { width: 92px; height: 92px; }
 .ring.lg > div { width: 74px; height: 74px; font-size: 22px; letter-spacing: -.8px; }
@@ -244,4 +244,18 @@ input[type=checkbox].check:checked::after { content: ""; width: 4px; height: 8px
 .vec .track { grid-column: 1 / -1; background: var(--card); height: 6px; border-radius: 999px; overflow: hidden; }
 .vec .fill { height: 100%; background: var(--text); border-radius: 999px; }
 .meter { height: 8px; background: var(--panel2); border-radius: 999px; overflow: hidden; margin-top: 10px; }
-.meter div { height: 100%; background: var(--text); border-radius: 999px; transition: width .3s; }
+.meter div { height: 100%; background: var(--c, var(--text)); border-radius: 999px; transition: width .3s; }
+
+/* --- Couleurs des catégories --- */
+.dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--c, var(--text)); vertical-align: 1px; flex: none; }
+.chip.on .dot { box-shadow: 0 0 0 2px var(--on-ink); }
+.swatches { display: flex; flex-wrap: wrap; gap: 8px; }
+.sw { width: 32px; height: 32px; border-radius: 50%; border: 0; padding: 0; cursor: pointer; background: var(--c); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 12%, transparent); position: relative; display: grid; place-items: center; }
+.sw.on { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--c); }
+.sw:focus-visible { outline: 2px solid var(--text); outline-offset: 3px; }
+.sw.custom { background: conic-gradient(#e5484d, #f5a524, #30a46c, #0090ff, #6e56cf, #d6409f, #e5484d); overflow: hidden; }
+.sw.custom.on { background: var(--c); }
+.sw.custom::after { content: "+"; color: #fff; font-weight: 600; font-size: 16px; text-shadow: 0 0 3px rgba(0,0,0,.5); pointer-events: none; }
+.sw.custom input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; padding: 0; border: 0; cursor: pointer; }
+.sheet .preview { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 18px; padding: 12px 14px; background: var(--panel); border-radius: 18px; }
+.sheet .preview .ring > div { background: var(--panel); }

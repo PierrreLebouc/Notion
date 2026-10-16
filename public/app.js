@@ -56,8 +56,20 @@ function statsOf(tasks) {
   };
 }
 const tasksOf = (catId) => state.data.tasks.filter((t) => t.categoryId === catId);
-const ring = (pct, cls = "") => `<div class="ring ${cls}" style="--p:${pct}"><div>${pct}%</div></div>`;
-const meter = (pct) => `<div class="meter"><div style="width:${pct}%"></div></div>`;
+
+// Couleurs proposées pour les catégories (lisibles en mode jour comme en mode nuit).
+const COLORS = [
+  ["#e5484d", "Rouge"], ["#f76b15", "Orange"], ["#f5a524", "Ambre"], ["#30a46c", "Vert"], ["#12a594", "Turquoise"],
+  ["#0090ff", "Bleu"], ["#6e56cf", "Violet"], ["#d6409f", "Rose"], ["#8d8d86", "Gris"],
+];
+const isColor = (c) => /^#[0-9a-f]{6}$/i.test(c || "");
+// Couleur d'une catégorie, utilisable dans un attribut style (noir / blanc du thème si aucune n'est choisie).
+const colorOf = (cat) => (isColor(cat?.color) ? cat.color : "var(--text)");
+const nextColor = () => (COLORS.find(([c]) => !state.data.categories.some((x) => x.color === c)) || COLORS[0])[0];
+
+const ring = (pct, cls = "", color) => `<div class="ring ${cls}" style="--p:${pct}${color ? `;--c:${color}` : ""}"><div>${pct}%</div></div>`;
+const meter = (pct, color) => `<div class="meter"${color ? ` style="--c:${color}"` : ""}><div style="width:${pct}%"></div></div>`;
+const dot = (cat) => `<span class="dot" style="--c:${colorOf(cat)}"></span>`;
 
 // ---------- Connexion ----------
 function showLogin() {
@@ -137,29 +149,55 @@ async function remove(coll, id) {
   await api(`items/${coll}/${id}`, { method: "DELETE" });
 }
 
-// Petite fenêtre de saisie (nom de catégorie…) ; renvoie le texte ou null si annulé.
-function askText(title, value = "", okLabel = "Enregistrer") {
+// Fenêtre de création / modification d'une catégorie (nom + couleur) ; renvoie { name, color } ou null si annulé.
+function askCategory(title, { name = "", color = nextColor() } = {}, okLabel = "Enregistrer") {
   const sheet = $("#sheet");
+  let picked = isColor(color) ? color.toLowerCase() : COLORS[0][0];
   sheet.classList.add("small");
   sheet.innerHTML = `<form class="in" method="dialog">
     <div class="top"><h3>${esc(title)}</h3><button type="button" class="x" aria-label="Fermer">×</button></div>
-    <input name="v" value="${esc(value)}" placeholder="Nom" style="margin-top:18px" required autocomplete="off">
+    <label class="t" for="catName">Nom</label>
+    <input id="catName" name="v" value="${esc(name)}" placeholder="Perso, Travail, Maison…" required autocomplete="off">
+    <label class="t">Couleur</label>
+    <div class="swatches" role="radiogroup" aria-label="Couleur">
+      ${COLORS.map(([c, l]) => `<button type="button" class="sw" data-c="${c}" style="--c:${c}" role="radio" title="${l}" aria-label="${l}"></button>`).join("")}
+      <label class="sw custom" title="Autre couleur" aria-label="Autre couleur"><input type="color" id="catColor" value="${picked}"></label>
+    </div>
+    <div class="preview" id="catPreview"></div>
     <button class="go" type="submit">${esc(okLabel)}</button>
   </form>`;
+  const paint = () => {
+    $$(".sw[data-c]", sheet).forEach((b) => { const on = b.dataset.c === picked; b.classList.toggle("on", on); b.setAttribute("aria-checked", on); });
+    const custom = $(".sw.custom", sheet);
+    custom.classList.toggle("on", !COLORS.some(([c]) => c === picked));
+    custom.style.setProperty("--c", picked);
+    $("#catColor", sheet).value = picked;
+    const label = $("#catName", sheet).value.trim() || "Aperçu";
+    $("#catPreview", sheet).innerHTML = `<span class="chip on" style="--c:${picked}">${dot({ color: picked })} ${esc(label)}</span>${ring(62, "", picked)}`;
+  };
   return new Promise((resolve) => {
     let result = null;
+    $$(".sw[data-c]", sheet).forEach((b) => (b.onclick = () => { picked = b.dataset.c; paint(); }));
+    $("#catColor", sheet).oninput = (e) => { picked = e.target.value.toLowerCase(); paint(); };
+    $("#catName", sheet).oninput = paint;
     $(".x", sheet).onclick = () => sheet.close();
-    $("form", sheet).onsubmit = (e) => { e.preventDefault(); result = e.target.elements.v.value.trim() || null; sheet.close(); };
+    $("form", sheet).onsubmit = (e) => {
+      e.preventDefault();
+      const v = e.target.elements.v.value.trim();
+      result = v ? { name: v, color: picked } : null;
+      sheet.close();
+    };
     sheet.onclose = () => { sheet.classList.remove("small"); sheet.onclose = null; resolve(result); };
+    paint();
     sheet.showModal();
-    $("input", sheet).select();
+    $("#catName", sheet).select();
   });
 }
 
 async function newCategory() {
-  const name = await askText("Nouvelle catégorie", "", "Créer");
-  if (!name) return;
-  const cat = { id: uid(), name, order: Date.now() };
+  const answer = await askCategory("Nouvelle catégorie", {}, "Créer");
+  if (!answer) return;
+  const cat = { id: uid(), ...answer, order: Date.now() };
   state.data.categories.push(cat);
   save("categories", cat);
   location.hash = `#/taches/${cat.id}`;
@@ -194,21 +232,21 @@ function viewDashboard(el) {
     <div class="cards">
       ${perCat.map(({ c, s }) => `
         <a class="lcard ccard" href="#/taches/${c.id}">
-          ${ring(s.pct)}
-          <div class="t"><b>${esc(c.name)}</b><div class="sub">${s.total ? `${s.done} terminée${s.done > 1 ? "s" : ""} sur ${plural(s.total, "tâche")}` : "Aucune tâche"}${s.subTotal ? ` · ${s.subDone}/${s.subTotal} points` : ""}</div>${meter(s.total ? Math.round((s.done / s.total) * 100) : 0)}</div>
+          ${ring(s.pct, "", colorOf(c))}
+          <div class="t"><b>${dot(c)} ${esc(c.name)}</b><div class="sub">${s.total ? `${s.done} terminée${s.done > 1 ? "s" : ""} sur ${plural(s.total, "tâche")}` : "Aucune tâche"}${s.subTotal ? ` · ${s.subDone}/${s.subTotal} points` : ""}</div>${meter(s.total ? Math.round((s.done / s.total) * 100) : 0, colorOf(c))}</div>
         </a>`).join("")}
       <button class="lcard ccard add" id="newCat2">+ Nouvelle catégorie</button>
     </div>
 
     <div class="panels">
       <div class="panel"><h2>Avancement par catégorie <small>tâches et points cochés</small></h2>
-        ${perCat.length ? `<div class="funnel">${perCat.map(({ c, s }) => `<a class="r" href="#/taches/${c.id}"><span>${esc(c.name)}</span><div class="track"><div class="fill" style="width:${s.pct}%"></div></div><span class="n">${s.pct}%</span></a>`).join("")}</div>`
+        ${perCat.length ? `<div class="funnel">${perCat.map(({ c, s }) => `<a class="r" href="#/taches/${c.id}"><span>${dot(c)} ${esc(c.name)}</span><div class="track"><div class="fill" style="width:${s.pct}%;--c:${colorOf(c)}"></div></div><span class="n">${s.pct}%</span></a>`).join("")}</div>`
         : `<div class="empty-s">Aucune catégorie pour l'instant.</div>`}
       </div>
       <div class="panel"><h2>En cours <small>les plus avancées</small></h2>
         ${inProgress.length ? `<div class="tbl-wrap"><table class="tbl"><tbody>${inProgress.map(({ t, p, cat }) => `
-          <tr class="click" data-cat="${t.categoryId}" data-id="${t.id}"><td><b>${esc(t.title)}</b><div class="sub">${esc(cat?.name || "")}</div></td>
-          <td style="width:40%">${meter(Math.round(p * 100))}</td><td class="tnum">${Math.round(p * 100)}%</td></tr>`).join("")}</tbody></table></div>`
+          <tr class="click" data-cat="${t.categoryId}" data-id="${t.id}"><td><b>${esc(t.title)}</b><div class="sub">${dot(cat)} ${esc(cat?.name || "")}</div></td>
+          <td style="width:40%">${meter(Math.round(p * 100), colorOf(cat))}</td><td class="tnum">${Math.round(p * 100)}%</td></tr>`).join("")}</tbody></table></div>`
         : `<div class="empty-s">Aucune tâche en cours.</div>`}
       </div>
     </div>`;
@@ -238,28 +276,29 @@ function viewTasks(el, catId) {
   const shown = tasks
     .filter((t) => filter === "all" || (filter === "done" ? t.done : !t.done))
     .sort((a, b) => a.done - b.done || b.created - a.created);
+  const color = colorOf(cat);
 
   el.innerHTML = `
     <div class="page-head">
-      <div style="display:flex;gap:18px;align-items:center">${ring(s.pct, "lg")}
+      <div style="display:flex;gap:18px;align-items:center">${ring(s.pct, "lg", colorOf(cat))}
         <div><h1>${esc(cat.name)}</h1><p>${s.total ? `${s.done} terminée${s.done > 1 ? "s" : ""} sur ${plural(s.total, "tâche")}${s.subTotal ? ` · ${s.subDone} sur ${plural(s.subTotal, "point")} cochés` : ""}` : "Aucune tâche dans cette catégorie."}</p></div></div>
-      <div class="acts"><button class="btn" id="renameCat">Renommer</button><button class="btn danger" id="deleteCat">Supprimer</button></div>
+      <div class="acts"><button class="btn" id="editCat">${dot(cat)} Modifier</button><button class="btn danger" id="deleteCat">Supprimer</button></div>
     </div>
     <div class="catbar">
-      ${cats.map((c) => `<a class="chip ${c.id === cat.id ? "on" : ""}" href="#/taches/${c.id}" style="text-decoration:none">${esc(c.name)} <span class="${c.id === cat.id ? "" : "muted"}">${tasksOf(c.id).filter((t) => !t.done).length || ""}</span></a>`).join("")}
+      ${cats.map((c) => `<a class="chip ${c.id === cat.id ? "on" : ""}" href="#/taches/${c.id}" style="text-decoration:none">${dot(c)} ${esc(c.name)} <span class="${c.id === cat.id ? "" : "muted"}">${tasksOf(c.id).filter((t) => !t.done).length || ""}</span></a>`).join("")}
       <button class="chip ghost" id="newCat">+ Catégorie</button>
     </div>
     <form class="newtask" id="newTask"><input name="title" placeholder="Nouvelle fiche de tâche…" autocomplete="off" required><button class="btn dark" type="submit">Ajouter</button></form>
     <div class="toolbar"><span class="seg" id="filter">${[["all", "Toutes", s.total], ["todo", "En cours", s.total - s.done], ["done", "Terminées", s.done]].map(([k, l, n]) => `<button class="${filter === k ? "on" : ""}" data-f="${k}">${l} · ${n}</button>`).join("")}</span></div>
     <div class="tasks" id="tasks">
-      ${shown.length ? shown.map(taskHTML).join("") : `<div class="empty"><b>${tasks.length ? "Rien ici" : "Aucune tâche"}</b>${tasks.length ? "Aucune tâche ne correspond à ce filtre." : "Ajoute une fiche de tâche avec le champ ci-dessus."}</div>`}
+      ${shown.length ? shown.map((t) => taskHTML(t, color)).join("") : `<div class="empty"><b>${tasks.length ? "Rien ici" : "Aucune tâche"}</b>${tasks.length ? "Aucune tâche ne correspond à ce filtre." : "Ajoute une fiche de tâche avec le champ ci-dessus."}</div>`}
     </div>`;
 
   $("#newCat").onclick = newCategory;
-  $("#renameCat").onclick = async () => {
-    const name = await askText("Renommer la catégorie", cat.name);
-    if (!name) return;
-    cat.name = name;
+  $("#editCat").onclick = async () => {
+    const answer = await askCategory("Modifier la catégorie", { name: cat.name, color: cat.color || COLORS[0][0] });
+    if (!answer) return;
+    Object.assign(cat, answer);
     save("categories", cat);
     render();
   };
@@ -290,7 +329,7 @@ function viewTasks(el, catId) {
   $$(".tcard", el).forEach(bindTask);
 }
 
-function taskHTML(t) {
+function taskHTML(t, color) {
   const subs = t.subtasks || [];
   const done = subs.filter((s) => s.done).length;
   const pct = subs.length ? Math.round((done / subs.length) * 100) : 0;
@@ -300,7 +339,7 @@ function taskHTML(t) {
     <div class="h">
       <input type="checkbox" class="check" data-done ${t.done ? "checked" : ""} title="${t.done ? "Rouvrir" : "Marquer terminée"}" aria-label="Terminée">
       <div class="t"><b>${esc(t.title) || "Sans titre"}</b><div class="sub">${esc(hint)}</div></div>
-      ${subs.length ? `<div class="mini"><div class="n">${done}/${subs.length}</div>${meter(t.done ? 100 : pct)}</div>` : ""}
+      ${subs.length ? `<div class="mini"><div class="n">${done}/${subs.length}</div>${meter(t.done ? 100 : pct, color)}</div>` : ""}
       <span class="chev"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></span>
     </div>
     ${open ? `<div class="body">
@@ -418,7 +457,7 @@ function openProfileDetail(p) {
       <div class="kpi"><div class="l">Dernière connexion</div><div class="v" style="font-size:20px">${ago(p.lastLogin)}</div><div class="s">${p.lastLogin ? fmtTime(p.lastLogin) : ""}</div></div>
     </div>
     <div class="panel" style="margin-top:12px"><h2>Catégories <small>${plural(p.categories.length, "catégorie")}</small></h2>
-      ${p.categories.length ? `<div class="funnel">${p.categories.map((c) => `<div class="r"><span>${esc(c.name)} <span class="muted">· ${c.done}/${c.tasks}</span></span><div class="track"><div class="fill" style="width:${Math.round(c.progress * 100)}%"></div></div><span class="n">${Math.round(c.progress * 100)}%</span></div>`).join("")}</div>`
+      ${p.categories.length ? `<div class="funnel">${p.categories.map((c) => `<div class="r"><span>${dot(c)} ${esc(c.name)} <span class="muted">· ${c.done}/${c.tasks}</span></span><div class="track"><div class="fill" style="width:${Math.round(c.progress * 100)}%;--c:${colorOf(c)}"></div></div><span class="n">${Math.round(c.progress * 100)}%</span></div>`).join("")}</div>`
       : `<div class="empty-s">Aucune catégorie.</div>`}
     </div>
     <h2 class="section-title">Activité</h2>

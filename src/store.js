@@ -42,7 +42,7 @@ export class Store extends DurableObject {
       progress: progress(tasks),
       categories: categories.map((c) => {
         const list = tasks.filter((t) => t.categoryId === c.id);
-        return { name: c.name, tasks: list.length, done: list.filter((t) => t.done).length, progress: progress(list) };
+        return { name: c.name, color: c.color || null, tasks: list.length, done: list.filter((t) => t.done).length, progress: progress(list) };
       }),
       lastActive: events[0]?.at || null,
       lastLogin,
