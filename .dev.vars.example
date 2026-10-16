@@ -1,0 +1,2 @@
+# Copie ce fichier en .dev.vars pour tester en local (jamais commité)
+SESSION_SECRET=une-longue-chaine-aleatoire

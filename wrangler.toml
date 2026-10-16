@@ -1,9 +1,0 @@
-name = "notion-perso"
-compatibility_date = "2025-01-01"
-pages_build_output_dir = "public"
-
-# Remplacer l'id par celui du namespace KV créé dans Cloudflare
-# (npx wrangler kv namespace create DATA).
-[[kv_namespaces]]
-binding = "DATA"
-id = "REMPLACER_PAR_ID_KV"

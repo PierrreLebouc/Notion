@@ -1,11 +1,13 @@
 {
-  "name": "notion-perso",
+  "name": "mes-taches",
   "private": true,
+  "type": "module",
   "scripts": {
-    "dev": "wrangler pages dev",
-    "deploy": "wrangler pages deploy"
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "user": "node scripts/user.mjs"
   },
   "devDependencies": {
-    "wrangler": "^4.0.0"
+    "wrangler": "^4.151.0"
   }
 }

@@ -1,54 +1,54 @@
-# Notion perso
+# Mes tâches — suivi de tâches personnel
 
-Petit gestionnaire de tâches façon Notion, hébergé sur **Cloudflare Pages**.
+Espace privé façon Notion pour suivre ses tâches, hébergé sur Cloudflare Workers. Même DA que Work_It (Geist, noir / blanc, blocs arrondis, pilules, mode jour / nuit).
 
-- Catégories de tâches (barre latérale)
-- Fiches de tâche dans chaque catégorie, à cocher quand elles sont terminées
-- Chaque fiche se déplie : notes + liste de sous-tâches à cocher avec barre de progression
-- Page de connexion ; comptes stockés en dur dans `lib/users.js`
-- Données et sessions stockées dans Cloudflare KV (un espace par utilisateur)
+## Fonctionnalités
 
-## Structure
+- **Tableau de bord** : avancement global, tâches en cours / terminées, points cochés, carte de chaque catégorie avec son avancement, tâches en cours les plus avancées.
+- **Tâches** : catégories (créer, renommer, supprimer), fiches de tâche dans chaque catégorie, filtre toutes / en cours / terminées.
+- **Fiche de tâche** : se déplie pour modifier le titre, ajouter des notes et une liste de points à cocher (sous-tâches) avec barre de progression. Enregistrement automatique.
+- **Admin** (comptes admin uniquement) : liste des profils avec leur avancement, nombre de catégories / tâches / points cochés, dernière connexion et dernière activité ; détail par profil avec l'avancement de chaque catégorie et le journal d'activité.
 
-```
-public/            fichiers statiques (login.html, index.html, app.js, style.css)
-functions/         Pages Functions (API + middleware d'authentification)
-  _middleware.js   redirige vers /login si pas de session
-  api/login.js     POST  /api/login
-  api/logout.js    POST  /api/logout
-  api/data.js      GET / PUT /api/data
-lib/users.js       utilisateurs (username / mot de passe en dur)
-lib/session.js     gestion des sessions (cookie + KV)
-```
+L'avancement d'une tâche vaut 100 % quand elle est terminée, sinon la part de ses points cochés. Celui d'une catégorie est la moyenne de ses tâches.
 
-## Utilisateurs
+## Comptes
 
-Modifier `lib/users.js` :
+Les comptes sont dans [`users.json`](users.json) ; les mots de passe y sont **chiffrés** (jamais en clair). On les gère avec une commande, depuis le dossier du projet :
 
-```js
-export const USERS = [
-  { username: "pierre", password: "changeme" },
-];
+```bash
+npm run user -- list                              # voir les comptes (★ = admin)
+npm run user -- add marie@exemple.fr "Marie"      # ajouter un compte (le mot de passe est demandé)
+npm run user -- add paul@exemple.fr "Paul" --admin
+npm run user -- password marie@exemple.fr         # changer un mot de passe
+npm run user -- admin marie@exemple.fr oui        # donner (oui) ou retirer (non) l'accès admin
+npm run user -- rename marie@exemple.fr "Marie D."
+npm run user -- remove marie@exemple.fr           # supprimer l'accès (les données restent stockées)
 ```
 
-⚠️ Si le dépôt GitHub est public, ces identifiants sont visibles : passe le dépôt en privé.
+Puis commit + push (Cloudflare redéploie). Chaque compte a ses propres données, rattachées à son email.
+
+## Configuration Cloudflare (une seule fois)
+
+Projet **Workers** relié au dépôt GitHub (Workers & Pages → Create → Import a repository) :
+
+1. Le nom du Worker dans Cloudflare doit être identique à `name` dans [`wrangler.jsonc`](wrangler.jsonc) (`mes-taches`), ou modifie ce champ.
+2. Build : commande de build vide, commande de déploiement `npx wrangler deploy`.
+3. Settings → Variables and Secrets, ajoute en **Secret** `SESSION_SECRET` : une longue chaîne aléatoire.
+
+Le stockage (Durable Object SQLite, une base par compte) est créé automatiquement au premier déploiement, rien d'autre à configurer.
 
 ## Développement local
 
 ```bash
 npm install
-npm run dev        # http://localhost:8788
+cp .dev.vars.example .dev.vars
+npm run dev                       # http://localhost:8787
 ```
 
-## Déploiement sur Cloudflare
+## Structure
 
-1. Créer un namespace KV : Cloudflare dashboard → **Storage & Databases → KV → Create**
-   (ou `npx wrangler kv namespace create DATA`), puis mettre son id dans `wrangler.toml`.
-2. Cloudflare dashboard → **Workers & Pages → Create → Pages → Connect to Git**, choisir ce dépôt.
-   - Framework preset : *None*
-   - Build command : *(vide)*
-   - Build output directory : `public`
-3. Si le binding n'est pas repris de `wrangler.toml` : **Settings → Bindings → Add → KV namespace**,
-   nom de variable `DATA`, puis redéployer.
-
-Chaque push sur `main` redéploie automatiquement.
+- `src/index.js` — API, connexion, sessions, accès admin
+- `src/store.js` — base SQLite privée par compte (catégories, tâches, journal)
+- `src/password.js` — chiffrement des mots de passe (PBKDF2)
+- `scripts/user.mjs` — gestion des comptes (`npm run user`)
+- `public/` — interface (HTML / CSS / JS, sans build)
