@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mes tâches</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="sidebar-head">
+        <span class="workspace">📝 <span id="username"></span></span>
+        <button id="logout" class="btn-ghost" title="Se déconnecter">⎋</button>
+      </div>
+      <div class="sidebar-title">Catégories</div>
+      <ul id="categories" class="categories"></ul>
+      <form id="new-category" class="inline-form">
+        <input name="name" placeholder="+ Nouvelle catégorie" autocomplete="off">
+      </form>
+    </aside>
+
+    <main class="main">
+      <div id="empty" class="empty">
+        <h2>Bienvenue 👋</h2>
+        <p class="muted">Crée une catégorie dans la barre de gauche pour commencer.</p>
+      </div>
+
+      <section id="category-view" hidden>
+        <header class="category-header">
+          <input id="category-name" class="title-input" aria-label="Nom de la catégorie">
+          <button id="delete-category" class="btn-ghost danger" title="Supprimer la catégorie">🗑</button>
+        </header>
+
+        <form id="new-task" class="inline-form new-task">
+          <input name="title" placeholder="+ Nouvelle fiche de tâche" autocomplete="off">
+        </form>
+
+        <div id="tasks" class="tasks"></div>
+      </section>
+    </main>
+  </div>
+
+  <div id="save-status" class="save-status"></div>
+
+  <template id="task-template">
+    <article class="task">
+      <div class="task-head">
+        <button class="toggle" aria-label="Développer">▸</button>
+        <input type="checkbox" class="task-done" title="Tâche terminée">
+        <input class="task-title" aria-label="Titre de la tâche">
+        <span class="progress-label"></span>
+        <button class="btn-ghost danger delete-task" title="Supprimer la tâche">🗑</button>
+      </div>
+      <div class="progress"><div class="progress-bar"></div></div>
+      <div class="task-body" hidden>
+        <textarea class="task-notes" placeholder="Notes…" rows="2"></textarea>
+        <ul class="subtasks"></ul>
+        <form class="inline-form new-subtask">
+          <input name="text" placeholder="+ Ajouter un point à cocher" autocomplete="off">
+        </form>
+      </div>
+    </article>
+  </template>
+
+  <script src="/app.js"></script>
+</body>
+</html>

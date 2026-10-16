@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Connexion · Mes tâches</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body class="login-page">
+  <form id="login-form" class="login-card">
+    <h1>📝 Mes tâches</h1>
+    <p class="muted">Connecte-toi pour accéder à ton espace.</p>
+    <label>Nom d'utilisateur
+      <input name="username" autocomplete="username" required autofocus>
+    </label>
+    <label>Mot de passe
+      <input name="password" type="password" autocomplete="current-password" required>
+    </label>
+    <p id="error" class="error" hidden></p>
+    <button type="submit" class="btn-primary">Se connecter</button>
+  </form>
+
+  <script>
+    const form = document.getElementById("login-form");
+    const error = document.getElementById("error");
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      error.hidden = true;
+      const res = await fetch("/api/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(Object.fromEntries(new FormData(form))),
+      });
+      if (res.ok) {
+        location.href = "/";
+      } else {
+        const body = await res.json().catch(() => ({}));
+        error.textContent = body.error || "Erreur de connexion";
+        error.hidden = false;
+      }
+    });
+  </script>
+</body>
+</html>
