@@ -71,6 +71,26 @@ const ring = (pct, cls = "", color) => `<div class="ring ${cls}" style="--p:${pc
 const meter = (pct, color) => `<div class="meter"${color ? ` style="--c:${color}"` : ""}><div style="width:${pct}%"></div></div>`;
 const dot = (cat) => `<span class="dot" style="--c:${colorOf(cat)}"></span>`;
 
+// ---------- Liens ----------
+// Repère les adresses web (http(s)://… ou www.…) écrites dans un texte ; renvoie [{ href, label }] sans doublon.
+function findLinks(text) {
+  const seen = new Set();
+  const out = [];
+  for (const [raw] of String(text || "").matchAll(/\b(?:https?:\/\/|www\.)[^\s<>"']+/gi)) {
+    const clean = raw.replace(/[.,;:!?)\]}»]+$/, "");
+    let url;
+    try { url = new URL(/^www\./i.test(clean) ? "https://" + clean : clean); } catch { continue; }
+    if (!/^https?:$/.test(url.protocol) || seen.has(url.href)) continue;
+    seen.add(url.href);
+    const path = (url.pathname + url.search).replace(/\/$/, "");
+    const label = url.hostname.replace(/^www\./, "") + (path.length > 28 ? path.slice(0, 27) + "…" : path);
+    out.push({ href: url.href, label });
+  }
+  return out;
+}
+const linkIcon = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>`;
+const linksHTML = (text) => findLinks(text).map((l) => `<a class="link" href="${esc(l.href)}" target="_blank" rel="noopener noreferrer" title="${esc(l.href)}">${linkIcon}${esc(l.label)}</a>`).join("");
+
 // ---------- Connexion ----------
 function showLogin() {
   if ($("#sheet").open) $("#sheet").close();
@@ -194,6 +214,30 @@ function askCategory(title, { name = "", color = nextColor() } = {}, okLabel = "
   });
 }
 
+// Petite fenêtre qui demande un texte (ex. le nom d'une tâche) ; renvoie le texte ou null si annulé.
+function askText(title, { label = "Nom", placeholder = "", okLabel = "Créer" } = {}) {
+  const sheet = $("#sheet");
+  sheet.classList.add("small");
+  sheet.innerHTML = `<form class="in" method="dialog">
+    <div class="top"><h3>${esc(title)}</h3><button type="button" class="x" aria-label="Fermer">×</button></div>
+    <label class="t" for="askText">${esc(label)}</label>
+    <input id="askText" name="v" placeholder="${esc(placeholder)}" required autocomplete="off">
+    <button class="go" type="submit">${esc(okLabel)}</button>
+  </form>`;
+  return new Promise((resolve) => {
+    let result = null;
+    $(".x", sheet).onclick = () => sheet.close();
+    $("form", sheet).onsubmit = (e) => {
+      e.preventDefault();
+      result = e.target.elements.v.value.trim() || null;
+      sheet.close();
+    };
+    sheet.onclose = () => { sheet.classList.remove("small"); sheet.onclose = null; resolve(result); };
+    sheet.showModal();
+    $("#askText", sheet).focus();
+  });
+}
+
 async function newCategory() {
   const answer = await askCategory("Nouvelle catégorie", {}, "Créer");
   if (!answer) return;
@@ -288,10 +332,9 @@ function viewTasks(el, catId) {
       ${cats.map((c) => `<a class="chip ${c.id === cat.id ? "on" : ""}" href="#/taches/${c.id}" style="text-decoration:none">${dot(c)} ${esc(c.name)} <span class="${c.id === cat.id ? "" : "muted"}">${tasksOf(c.id).filter((t) => !t.done).length || ""}</span></a>`).join("")}
       <button class="chip ghost" id="newCat">+ Catégorie</button>
     </div>
-    <form class="newtask" id="newTask"><input name="title" placeholder="Nouvelle fiche de tâche…" autocomplete="off" required><button class="btn dark" type="submit">Ajouter</button></form>
-    <div class="toolbar"><span class="seg" id="filter">${[["all", "Toutes", s.total], ["todo", "En cours", s.total - s.done], ["done", "Terminées", s.done]].map(([k, l, n]) => `<button class="${filter === k ? "on" : ""}" data-f="${k}">${l} · ${n}</button>`).join("")}</span></div>
+    <div class="toolbar"><span class="seg" id="filter">${[["all", "Toutes", s.total], ["todo", "En cours", s.total - s.done], ["done", "Terminées", s.done]].map(([k, l, n]) => `<button class="${filter === k ? "on" : ""}" data-f="${k}">${l} · ${n}</button>`).join("")}</span><button class="btn dark" id="newTask">+ Nouvelle tâche</button></div>
     <div class="tasks" id="tasks">
-      ${shown.length ? shown.map((t) => taskHTML(t, color)).join("") : `<div class="empty"><b>${tasks.length ? "Rien ici" : "Aucune tâche"}</b>${tasks.length ? "Aucune tâche ne correspond à ce filtre." : "Ajoute une fiche de tâche avec le champ ci-dessus."}</div>`}
+      ${shown.length ? shown.map((t) => taskHTML(t, color)).join("") : `<div class="empty"><b>${tasks.length ? "Rien ici" : "Aucune tâche"}</b>${tasks.length ? "Aucune tâche ne correspond à ce filtre." : "Ajoute une fiche de tâche avec le bouton « + Nouvelle tâche »."}</div>`}
     </div>`;
 
   $("#newCat").onclick = newCategory;
@@ -314,16 +357,14 @@ function viewTasks(el, catId) {
       toast("Catégorie supprimée");
     } catch (e) { toast(e.message, true); }
   };
-  $("#newTask").onsubmit = (e) => {
-    e.preventDefault();
-    const title = e.target.elements.title.value.trim();
+  // La tâche est créée fermée : on la déplie soi-même pour y ajouter des notes ou des points.
+  $("#newTask").onclick = async () => {
+    const title = await askText("Nouvelle tâche", { label: "Nom de la tâche", placeholder: "Appeler le garage, préparer la réunion…" });
     if (!title) return;
     const t = { id: uid(), categoryId: cat.id, title, notes: "", done: false, subtasks: [], created: Date.now() };
     state.data.tasks.unshift(t);
-    state.open.add(t.id);
     save("tasks", t);
     render();
-    $("#newTask input").focus();
   };
   $$("#filter button").forEach((b) => (b.onclick = () => { localSet("taskFilter", b.dataset.f); render(); }));
   $$(".tcard", el).forEach(bindTask);
@@ -334,7 +375,13 @@ function taskHTML(t, color) {
   const done = subs.filter((s) => s.done).length;
   const pct = subs.length ? Math.round((done / subs.length) * 100) : 0;
   const open = state.open.has(t.id);
+  const links = linksHTML(t.notes);
   const hint = subs.length ? `${done} sur ${plural(subs.length, "point")} cochés` : t.notes ? t.notes.split("\n")[0].slice(0, 90) : "Clique pour ajouter des points à cocher";
+  // Tâche fermée : liens cliquables et points à cocher restent utilisables sans la déplier.
+  const peek = !open && (links || subs.length) ? `<div class="peek">
+      ${links ? `<div class="links-row">${links}</div>` : ""}
+      ${subs.length ? `<ul class="checklist mini-list">${subs.map((s) => `<li class="${s.done ? "on" : ""}" data-sid="${s.id}"><input type="checkbox" class="check sq" ${s.done ? "checked" : ""} aria-label="Cocher"><span class="txt">${esc(s.text)}</span></li>`).join("")}</ul>` : ""}
+    </div>` : "";
   return `<article class="tcard ${open ? "open" : ""} ${t.done ? "done" : ""}" data-id="${t.id}">
     <div class="h">
       <input type="checkbox" class="check" data-done ${t.done ? "checked" : ""} title="${t.done ? "Rouvrir" : "Marquer terminée"}" aria-label="Terminée">
@@ -342,9 +389,11 @@ function taskHTML(t, color) {
       ${subs.length ? `<div class="mini"><div class="n">${done}/${subs.length}</div>${meter(t.done ? 100 : pct, color)}</div>` : ""}
       <span class="chev"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></span>
     </div>
+    ${peek}
     ${open ? `<div class="body">
       <input class="title" value="${esc(t.title)}" aria-label="Titre de la tâche">
       <textarea placeholder="Notes, liens, détails…">${esc(t.notes)}</textarea>
+      <div class="links-row">${links}</div>
       <label class="t">Points à cocher</label>
       <ul class="checklist">
         ${subs.map((s) => `<li class="${s.done ? "on" : ""}" data-sid="${s.id}"><input type="checkbox" class="check sq" ${s.done ? "checked" : ""} aria-label="Cocher"><input class="txt" value="${esc(s.text)}" aria-label="Point"><button class="rm" title="Supprimer ce point" aria-label="Supprimer">×</button></li>`).join("")}
@@ -365,11 +414,18 @@ function bindTask(card) {
     render();
   };
   $("[data-done]", card).onchange = (e) => setDone(e.target.checked);
-  if (!state.open.has(t.id)) return;
+  if (!state.open.has(t.id)) {
+    $$(".peek li[data-sid] .check", card).forEach((box) => (box.onchange = () => {
+      t.subtasks.find((s) => s.id === box.closest("li").dataset.sid).done = box.checked;
+      save("tasks", t);
+      render();
+    }));
+    return;
+  }
 
   const title = $("input.title", card);
   title.oninput = () => { t.title = title.value; $(".h b", card).textContent = t.title || "Sans titre"; save("tasks", t, 600); };
-  $("textarea", card).oninput = (e) => { t.notes = e.target.value; save("tasks", t, 600); };
+  $("textarea", card).oninput = (e) => { t.notes = e.target.value; $(".body .links-row", card).innerHTML = linksHTML(t.notes); save("tasks", t, 600); };
 
   $$("li[data-sid]", card).forEach((li) => {
     const sub = t.subtasks.find((s) => s.id === li.dataset.sid);
