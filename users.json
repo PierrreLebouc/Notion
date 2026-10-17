@@ -1,6 +1,6 @@
 {
   "_aide": "Comptes autorisés. Pour ajouter un compte, changer un mot de passe ou donner l'accès admin : npm run user (voir README). Redéploie ensuite.",
   "users": [
-    { "email": "pierre.lebouc@etik.com", "name": "Pierre", "admin": true, "passwordHash": "pbkdf2$100000$2N8wR1ZrEi816qxPJngb1g==$5Uts+hkC0ckoxtObFR0GmqOOCLEI+jsC0kdrNdWO0iQ=" }
+    { "email": "pierre.lebouc@etik.com", "name": "Pierre", "admin": true, "passwordHash": "pbkdf2$100000$pNu49Ryh8NLRKdR1v6bYgw==$SyTMtiMzyoyFf1oXAiIgd1+7e/qOmiFvoQQJ6WA+nYU=" }
   ]
 }
