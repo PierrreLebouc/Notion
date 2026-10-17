@@ -1,4 +1,6 @@
 // Gestion des comptes de users.json (les mots de passe y sont enregistrés chiffrés).
+// Attention : users.json ne sert qu'au tout premier démarrage du site. Ensuite, les comptes se gèrent
+// depuis le menu Admin du site et les modifications de ce fichier ne sont plus prises en compte.
 //   npm run user -- list
 //   npm run user -- add <email> "<Nom>" [--admin]
 //   npm run user -- password <email>
@@ -10,7 +12,7 @@ import readline from "node:readline";
 import { hashPassword } from "../src/password.js";
 
 const FILE = new URL("../users.json", import.meta.url);
-const HELP = "Comptes autorisés. Pour ajouter un compte, changer un mot de passe ou donner l'accès admin : npm run user (voir README). Redéploie ensuite.";
+const HELP = "Comptes de départ, utilisés seulement au tout premier démarrage du site. Ensuite, les comptes se gèrent depuis le menu Admin du site.";
 
 const data = JSON.parse(readFileSync(FILE, "utf8"));
 data.users ||= [];
@@ -53,26 +55,26 @@ try {
       const name = rest.filter((r) => r !== "--admin").join(" ") || email.split("@")[0];
       data.users.push({ email, name, admin: rest.includes("--admin"), passwordHash: await askPassword() });
       save();
-      console.log(`✓ Compte ${email} ajouté. Redéploie pour l'activer.`);
+      console.log(`✓ Compte ${email} ajouté. (pris en compte seulement au premier démarrage du site).`);
       break;
     }
     case "password": {
       need(find(email)).passwordHash = await askPassword();
       save();
-      console.log(`✓ Mot de passe de ${email} changé (ses sessions ouvertes sont déconnectées). Redéploie pour l'activer.`);
+      console.log(`✓ Mot de passe de ${email} changé (ses sessions ouvertes sont déconnectées). (pris en compte seulement au premier démarrage du site).`);
       break;
     }
     case "admin": {
       const on = ["oui", "yes", "true", "on"].includes(String(rest[0]).toLowerCase());
       need(find(email)).admin = on;
       save();
-      console.log(`✓ ${email} ${on ? "est maintenant admin" : "n'est plus admin"}. Redéploie pour l'activer.`);
+      console.log(`✓ ${email} ${on ? "est maintenant admin" : "n'est plus admin"}. (pris en compte seulement au premier démarrage du site).`);
       break;
     }
     case "rename": {
       need(find(email)).name = rest.join(" ");
       save();
-      console.log(`✓ Nom mis à jour. Redéploie pour l'activer.`);
+      console.log(`✓ Nom mis à jour. (pris en compte seulement au premier démarrage du site).`);
       break;
     }
     case "remove": {

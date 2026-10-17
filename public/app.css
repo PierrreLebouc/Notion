@@ -268,3 +268,23 @@ input[type=checkbox].check:checked::after { content: ""; width: 4px; height: 8px
 .sw.custom input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; padding: 0; border: 0; cursor: pointer; }
 .sheet .preview { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 18px; padding: 12px 14px; background: var(--panel); border-radius: 18px; }
 .sheet .preview .ring > div { background: var(--panel); }
+
+/* --- Gestion des comptes (Admin) --- */
+.account-acts { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+label.opt { display: flex; align-items: center; gap: 10px; margin-top: 16px; font-size: 14px; cursor: pointer; }
+label.opt input:disabled { opacity: .5; cursor: not-allowed; }
+.sheet form .msg { margin-top: 14px; }
+.tbl.accounts td { vertical-align: middle; }
+.tbl.accounts .row-acts { text-align: right; white-space: nowrap; }
+.tbl.accounts .row-acts .btn + .btn { margin-left: 6px; }
+
+/* --- Entreprise : salariés assignés, gestion --- */
+.avs { display: inline-flex; flex: none; }
+.avs .av + .av { margin-left: -6px; }
+.av { display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--panel2); color: var(--text); border: 2px solid var(--card); font-size: 10.5px; font-weight: 600; letter-spacing: .2px; vertical-align: middle; flex: none; }
+.funnel .r .av { width: 22px; height: 22px; font-size: 10px; margin-right: 4px; }
+.tcard .h .st.muted { background: transparent; border: 1px dashed var(--line); color: var(--muted); font-weight: 500; }
+.toolbar-note { margin-left: auto; font-size: 13px; }
+.inline-form { display: flex; gap: 8px; flex-wrap: wrap; }
+.inline-form input { flex: 1 1 240px; width: auto; }
+.tcard .body .chips { margin-top: 2px; }

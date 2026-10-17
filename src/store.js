@@ -1,10 +1,15 @@
 import { DurableObject } from "cloudflare:workers";
 
-// Base SQLite privée d'un compte : catégories, tâches (avec leurs sous-tâches) et journal d'activité.
+// Base SQLite d'un compte personnel (catégories) ou d'une entreprise (projets partagés) :
+// catégories / projets, tâches (avec leurs sous-tâches) et journal d'activité.
 export class Store extends DurableObject {
   constructor(ctx, env) {
     super(ctx, env);
     this.sql = ctx.storage.sql;
+    this.init();
+  }
+
+  init() {
     this.sql.exec(`
       CREATE TABLE IF NOT EXISTS docs (coll TEXT, id TEXT, data TEXT, updated INTEGER, PRIMARY KEY (coll, id));
       CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER, kind TEXT, label TEXT);
@@ -24,30 +29,54 @@ export class Store extends DurableObject {
     this.sql.exec("INSERT INTO events (at, kind, label) VALUES (?, ?, ?)", now, ev.kind, ev.label || "");
   }
 
-  // Résumé pour la page admin : avancement par catégorie, compteurs, activité récente.
-  stats(limit = 300) {
-    const { categories, tasks } = this.all();
-    const progress = (list) => (list.length ? list.reduce((a, t) => a + taskProgress(t), 0) / list.length : 0);
-    const subs = tasks.flatMap((t) => t.subtasks || []);
-    const events = this.sql.exec("SELECT * FROM events ORDER BY at DESC LIMIT ?", limit).toArray();
-    const lastLogin = this.sql.exec("SELECT at FROM events WHERE kind = 'login' ORDER BY at DESC LIMIT 1").toArray()[0]?.at || null;
-    return {
-      counts: {
-        categories: categories.length,
-        tasks: tasks.length,
-        done: tasks.filter((t) => t.done).length,
-        subtasks: subs.length,
-        subtasksDone: subs.filter((s) => s.done).length,
-      },
-      progress: progress(tasks),
-      categories: categories.map((c) => {
-        const list = tasks.filter((t) => t.categoryId === c.id);
-        return { name: c.name, color: c.color || null, tasks: list.length, done: list.filter((t) => t.done).length, progress: progress(list) };
-      }),
-      lastActive: events[0]?.at || null,
-      lastLogin,
-      events,
-    };
+  // Date de la dernière connexion (pour la liste des comptes de la page admin).
+  lastLogin() {
+    return this.sql.exec("SELECT at FROM events WHERE kind = 'login' ORDER BY at DESC LIMIT 1").toArray()[0]?.at || null;
+  }
+
+  // --- Comptes (uniquement dans l'instance « registre » du site) ---
+  // Chaque compte a une clé fixe (key) qui rattache ses données : changer son email ne les perd pas.
+  // Au premier appel, la liste est remplie avec les comptes de users.json.
+  accounts(seed = []) {
+    this.sql.exec("CREATE TABLE IF NOT EXISTS accounts (key TEXT PRIMARY KEY, data TEXT)");
+    this.sql.exec("CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT)");
+    if (!this.sql.exec("SELECT v FROM meta WHERE k = 'seeded'").toArray().length) {
+      for (const u of seed) this.putAccount({ ...u, key: u.email.toLowerCase(), created: Date.now() });
+      this.sql.exec("INSERT INTO meta (k, v) VALUES ('seeded', ?)", String(Date.now()));
+    }
+    return this.sql.exec("SELECT data FROM accounts").toArray().map((r) => JSON.parse(r.data));
+  }
+
+  putAccount(account) {
+    this.sql.exec("INSERT OR REPLACE INTO accounts (key, data) VALUES (?, ?)", account.key, JSON.stringify(account));
+    return account;
+  }
+
+  removeAccount(key) {
+    this.sql.exec("DELETE FROM accounts WHERE key = ?", key);
+  }
+
+  // --- Entreprises (registre) : { id, name, created } ---
+  companies() {
+    this.sql.exec("CREATE TABLE IF NOT EXISTS companies (id TEXT PRIMARY KEY, data TEXT)");
+    return this.sql.exec("SELECT data FROM companies").toArray().map((r) => JSON.parse(r.data));
+  }
+
+  putCompany(company) {
+    this.companies();
+    this.sql.exec("INSERT OR REPLACE INTO companies (id, data) VALUES (?, ?)", company.id, JSON.stringify(company));
+    return company;
+  }
+
+  removeCompany(id) {
+    this.companies();
+    this.sql.exec("DELETE FROM companies WHERE id = ?", id);
+  }
+
+  // Efface toutes les données de ce compte (catégories, tâches, journal).
+  async wipe() {
+    await this.ctx.storage.deleteAll();
+    this.init();
   }
 
   all() {
@@ -76,6 +105,13 @@ export class Store extends DurableObject {
     this.sql.exec("DELETE FROM docs WHERE coll = ? AND id = ?", coll, id);
   }
 
+  // Entreprise : retire un salarié supprimé des membres des projets et des assignations des tâches.
+  forgetPerson(key) {
+    const { categories, tasks } = this.all();
+    for (const c of categories) if ((c.members || []).includes(key)) this.put("categories", c.id, { ...c, members: c.members.filter((k) => k !== key) });
+    for (const t of tasks) if ((t.assignees || []).includes(key)) this.put("tasks", t.id, { ...t, assignees: t.assignees.filter((k) => k !== key) });
+  }
+
   // Supprime une catégorie et toutes ses tâches ; renvoie le nombre de tâches supprimées.
   removeCategory(id) {
     const ids = this.all().tasks.filter((t) => t.categoryId === id).map((t) => t.id);
@@ -85,9 +121,3 @@ export class Store extends DurableObject {
   }
 }
 
-// Avancement d'une tâche (0 à 1) : terminée = 1, sinon part des sous-tâches cochées.
-export function taskProgress(t) {
-  if (t.done) return 1;
-  const subs = t.subtasks || [];
-  return subs.length ? subs.filter((s) => s.done).length / subs.length : 0;
-}
