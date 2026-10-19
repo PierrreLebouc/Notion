@@ -1,3 +1,4 @@
+import { WorkerEntrypoint } from "cloudflare:workers";
 import usersFile from "../users.json";
 import { Store } from "./store.js";
 import { hashPassword, verifyPassword } from "./password.js";
@@ -185,10 +186,57 @@ async function companyItems(request, env, user, all, coll, id, method) {
   return fail("Route inconnue.", 404);
 }
 
+// --- Lien avec le Hub ---
+// Données de tâches d'un compte, telles que l'interface les voit.
+async function dataFor(env, user) {
+  if (!inCompany(user)) return storeFor(env, user).all();
+  const data = await companyStore(env, user.companyId).all();
+  return roleOf(user) === "manager" ? data : workerView(data, user.key);
+}
+
+// Accès privé pour le Hub, par « service binding » : ce point d'entrée n'a pas d'adresse publique,
+// seul un Worker du même compte Cloudflare qui le déclare dans sa configuration peut l'appeler.
+export class HubLink extends WorkerEntrypoint {
+  async tasksFor(email) {
+    const user = await findUser(this.env, email);
+    if (!user) return null;
+    const { categories, tasks } = await dataFor(this.env, user);
+    return { categories, tasks };
+  }
+}
+
+// Connexion automatique depuis le Hub : GET /api/sso?token=…
+// Le jeton est signé par le Hub (Ed25519) ; on le vérifie avec sa clé publique (HUB_PUBLIC_KEY),
+// puis on ouvre une session normale pour le compte qui porte cet email.
+const fromB64url = (s) => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0));
+async function hubSso(request, env, url) {
+  const back = (msg) => Response.redirect(`${url.origin}/?sso=${encodeURIComponent(msg)}`, 302);
+  if (!env.HUB_PUBLIC_KEY) return back("Connexion automatique non configurée");
+  const [payload, sig] = String(url.searchParams.get("token") || "").split(".");
+  try {
+    const { kty, crv, x } = JSON.parse(env.HUB_PUBLIC_KEY);
+    const key = await crypto.subtle.importKey("jwk", { kty, crv, x }, { name: "Ed25519" }, false, ["verify"]);
+    if (!(await crypto.subtle.verify({ name: "Ed25519" }, key, fromB64url(sig), enc.encode(payload)))) return back("Jeton invalide");
+    const t = JSON.parse(new TextDecoder().decode(fromB64url(payload)));
+    if (t.aud !== url.origin || !(t.exp > Date.now())) return back("Jeton expiré ou destiné à un autre site");
+    // Un jeton ne sert qu'une fois.
+    if (!(await registry(env).useNonce(String(t.jti), t.exp))) return back("Jeton déjà utilisé");
+    const user = await findUser(env, t.sub);
+    if (!user) return back("Aucun compte pour cet email");
+    await storeFor(env, user).addEvent({ kind: "login", label: "Connexion depuis le Hub" });
+    const next = typeof t.next === "string" && t.next.startsWith("/") && !t.next.startsWith("//") ? t.next : "/";
+    return new Response(null, { status: 302, headers: { location: next, "set-cookie": sessionCookie(await makeToken(env, user), SESSION_DAYS * 86400) } });
+  } catch {
+    return back("Jeton invalide");
+  }
+}
+
 // --- API ---
 async function handleApi(request, env, url) {
   const path = url.pathname.replace(/^\/api\/?/, "").split("/").filter(Boolean);
   const method = request.method;
+
+  if (path[0] === "sso" && method === "GET") return hubSso(request, env, url);
 
   if (path[0] === "login" && method === "POST") {
     const { email, password } = await request.json().catch(() => ({}));
@@ -211,10 +259,8 @@ async function handleApi(request, env, url) {
 
   if (path[0] === "data" && method === "GET") {
     if (!inCompany(user)) return json(await store.all());
-    const all = await users(env);
-    const data = await companyStore(env, user.companyId).all();
-    const people = companyPeople(all, user.companyId).map(person);
-    return json({ ...(role === "manager" ? data : workerView(data, user.key)), people });
+    const people = companyPeople(await users(env), user.companyId).map(person);
+    return json({ ...(await dataFor(env, user)), people });
   }
 
   if (path[0] === "items" && COLLECTIONS.includes(path[1])) {

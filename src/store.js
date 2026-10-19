@@ -73,6 +73,15 @@ export class Store extends DurableObject {
     this.sql.exec("DELETE FROM companies WHERE id = ?", id);
   }
 
+  // Jetons de connexion du Hub déjà utilisés (registre) : renvoie false si ce jeton a déjà servi.
+  useNonce(id, exp) {
+    this.sql.exec("CREATE TABLE IF NOT EXISTS nonces (id TEXT PRIMARY KEY, exp INTEGER)");
+    this.sql.exec("DELETE FROM nonces WHERE exp < ?", Date.now());
+    if (this.sql.exec("SELECT id FROM nonces WHERE id = ?", id).toArray().length) return false;
+    this.sql.exec("INSERT INTO nonces (id, exp) VALUES (?, ?)", id, exp);
+    return true;
+  }
+
   // Efface toutes les données de ce compte (catégories, tâches, journal).
   async wipe() {
     await this.ctx.storage.deleteAll();

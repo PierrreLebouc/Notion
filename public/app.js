@@ -163,11 +163,18 @@ async function boot() {
 }
 
 (async () => {
+  // Échec d'une connexion automatique depuis le Hub : message affiché sur l'écran de connexion.
+  const sso = new URLSearchParams(location.search).get("sso");
+  if (sso) history.replaceState(null, "", location.pathname + location.hash);
   try {
     state.user = (await api("me")).user;
     await boot();
   } catch {
     showLogin();
+    if (sso) {
+      $("#loginErr").textContent = `Connexion depuis le Hub impossible : ${sso}.`;
+      $("#loginErr").classList.remove("hidden");
+    }
   }
 })();
 
