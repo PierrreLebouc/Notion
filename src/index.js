@@ -2,6 +2,7 @@ import { WorkerEntrypoint } from "cloudflare:workers";
 import usersFile from "../users.json";
 import { Store } from "./store.js";
 import { hashPassword, verifyPassword } from "./password.js";
+import { verifyHubToken } from "./hub-sso.js";
 
 export { Store };
 
@@ -205,30 +206,22 @@ export class HubLink extends WorkerEntrypoint {
   }
 }
 
-// Connexion automatique depuis le Hub : GET /api/sso?token=…
-// Le jeton est signé par le Hub (Ed25519) ; on le vérifie avec sa clé publique (HUB_PUBLIC_KEY),
-// puis on ouvre une session normale pour le compte qui porte cet email.
-const fromB64url = (s) => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0));
+// Connexion automatique depuis le Hub : GET /api/sso?token=… (vérification dans hub-sso.js, clé publique incluse ;
+// HUB_PUBLIC_KEY dans Cloudflare la remplace si besoin). On ouvre ensuite une session normale pour ce compte.
 async function hubSso(request, env, url) {
   const back = (msg) => Response.redirect(`${url.origin}/?sso=${encodeURIComponent(msg)}`, 302);
-  if (!env.HUB_PUBLIC_KEY) return back("Connexion automatique non configurée");
-  const [payload, sig] = String(url.searchParams.get("token") || "").split(".");
+  let t;
   try {
-    const { kty, crv, x } = JSON.parse(env.HUB_PUBLIC_KEY);
-    const key = await crypto.subtle.importKey("jwk", { kty, crv, x }, { name: "Ed25519" }, false, ["verify"]);
-    if (!(await crypto.subtle.verify({ name: "Ed25519" }, key, fromB64url(sig), enc.encode(payload)))) return back("Jeton invalide");
-    const t = JSON.parse(new TextDecoder().decode(fromB64url(payload)));
-    if (t.aud !== url.origin || !(t.exp > Date.now())) return back("Jeton expiré ou destiné à un autre site");
-    // Un jeton ne sert qu'une fois.
-    if (!(await registry(env).useNonce(String(t.jti), t.exp))) return back("Jeton déjà utilisé");
-    const user = await findUser(env, t.sub);
-    if (!user) return back("Aucun compte pour cet email");
-    await storeFor(env, user).addEvent({ kind: "login", label: "Connexion depuis le Hub" });
-    const next = typeof t.next === "string" && t.next.startsWith("/") && !t.next.startsWith("//") ? t.next : "/";
-    return new Response(null, { status: 302, headers: { location: next, "set-cookie": sessionCookie(await makeToken(env, user), SESSION_DAYS * 86400) } });
-  } catch {
-    return back("Jeton invalide");
+    t = await verifyHubToken(url.searchParams.get("token"), url.origin, env.HUB_PUBLIC_KEY || undefined);
+  } catch (e) {
+    return back(e.message);
   }
+  // Un jeton ne sert qu'une fois.
+  if (!(await registry(env).useNonce(t.jti, t.exp))) return back("Jeton déjà utilisé");
+  const user = await findUser(env, t.sub);
+  if (!user) return back("Aucun compte pour cet email");
+  await storeFor(env, user).addEvent({ kind: "login", label: "Connexion depuis le Hub" });
+  return new Response(null, { status: 302, headers: { location: t.next, "set-cookie": sessionCookie(await makeToken(env, user), SESSION_DAYS * 86400) } });
 }
 
 // --- API ---

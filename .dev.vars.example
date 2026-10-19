@@ -1,4 +1,2 @@
 # Copie ce fichier en .dev.vars pour tester en local (jamais commité)
 SESSION_SECRET=une-longue-chaine-aleatoire
-# Clé publique du Hub pour la connexion automatique (npm run sso-keys dans le Hub)
-HUB_PUBLIC_KEY={"kty":"OKP","crv":"Ed25519","x":"..."}

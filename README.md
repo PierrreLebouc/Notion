@@ -36,7 +36,7 @@ Les comptes et entreprises sont stockés dans une base Cloudflare dédiée (Dura
 ## Lien avec le Hub
 
 - **Tâches sur l'accueil du Hub** : le Hub lit les catégories et tâches d'un compte par le point d'entrée privé `HubLink` (`src/index.js`), appelé par « service binding ». Il n'a aucune adresse publique : seul un Worker du même compte Cloudflare peut l'appeler. Le Worker doit donc s'appeler `mes-taches`.
-- **Connexion automatique** : `GET /api/sso?token=…` ouvre une session pour le compte désigné par un jeton signé par le Hub (Ed25519, 60 s, usage unique, destiné à ce site). Ajouter la variable `HUB_PUBLIC_KEY` (Settings → Variables and Secrets), obtenue avec `npm run sso-keys` dans le Hub.
+- **Connexion automatique** : `GET /api/sso?token=…` ouvre une session pour le compte désigné par un jeton signé par le Hub (Ed25519, 60 s, usage unique, destiné à ce site). La clé publique du Hub est incluse dans `src/hub-sso.js` (rien à configurer) ; la variable `HUB_PUBLIC_KEY` la remplace si besoin.
 
 ## Configuration Cloudflare (une seule fois)
 
